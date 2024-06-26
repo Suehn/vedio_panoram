@@ -1,12 +1,14 @@
 
+
 #include <chrono>
 #include <iostream>
 #include <opencv2/opencv.hpp>
+#include <thread>
 #include <vector>
 
 class ImageStitching {
 public:
-  ImageStitching() : ratio(0.55), min_match(10), smoothing_window_size(800) {
+  ImageStitching() : ratio(0.95), min_match(10), smoothing_window_size(100) {
     orb = cv::ORB::create();
   }
 
@@ -175,23 +177,45 @@ private:
   cv::Ptr<cv::ORB> orb;
 };
 
-int main() {
-  cv::Mat img1 = cv::imread("../data/test01.jpg");
-  cv::Mat img2 = cv::imread("../data/test02.jpg");
+void processImages(const std::string &img1_path, const std::string &img2_path,
+                   const std::string &output_path) {
+  cv::Mat img1 = cv::imread(img1_path);
+  cv::Mat img2 = cv::imread(img2_path);
 
   if (img1.empty() || img2.empty()) {
-    std::cerr << "Could not open or find the images!\n";
-    return -1;
+    std::cerr << "Could not open or find the images: " << img1_path << " and "
+              << img2_path << "\n";
+    return;
   }
 
   ImageStitching stitcher;
   cv::Mat result = stitcher.blending(img1, img2);
 
   if (!result.empty()) {
-    cv::imwrite("panorama.jpg", result);
-    std::cout << "Panorama image has been created.\n";
+    cv::imwrite(output_path, result);
+    std::cout << "Panorama image " << output_path << " has been created.\n";
   } else {
-    std::cerr << "Panorama image could not be created.\n";
+    std::cerr << "Panorama image " << output_path << " could not be created.\n";
+  }
+}
+
+int main(int argc, char **argv) {
+  if (argc != 49) {
+    std::cerr << "Usage: " << argv[0]
+              << " <image1_1> <image1_2> <output_image1> ... <image4_1> "
+                 "<image4_2> <output_image4>\n";
+    return -1;
+  }
+
+  std::vector<std::thread> threads;
+
+  for (int i = 0; i < 4; ++i) {
+    threads.emplace_back(processImages, argv[1 + i * 3], argv[2 + i * 3],
+                         argv[3 + i * 3]);
+  }
+
+  for (auto &t : threads) {
+    t.join();
   }
 
   return 0;
