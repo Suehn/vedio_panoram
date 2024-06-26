@@ -195,8 +195,8 @@ private:
 
 int main() {
   // 读取两张图像
-  cv::Mat img1 = cv::imread("../data/test01.jpg");
-  cv::Mat img2 = cv::imread("../data/test02.jpg");
+  cv::Mat img1 = cv::imread("../data/video1_frame1_d.jpg");
+  cv::Mat img2 = cv::imread("../data/video2_frame1_d.jpg");
 
   if (img1.empty() || img2.empty()) {
     std::cerr << "Could not open or find the images!\n";

@@ -8,7 +8,7 @@
 class ImageStitching {
 public:
   ImageStitching() : ratio(0.95), min_match(10), smoothing_window_size(100) {
-    orb = cv::ORB::create();
+    sift = cv::SIFT::create();
   }
 
   cv::Mat registration(const cv::Mat &img1, const cv::Mat &img2) {
@@ -16,8 +16,8 @@ public:
 
     std::vector<cv::KeyPoint> kp1, kp2;
     cv::Mat des1, des2;
-    orb->detectAndCompute(img1, cv::noArray(), kp1, des1);
-    orb->detectAndCompute(img2, cv::noArray(), kp2, des2);
+    sift->detectAndCompute(img1, cv::noArray(), kp1, des1);
+    sift->detectAndCompute(img2, cv::noArray(), kp2, des2);
 
     auto detect_compute_end = std::chrono::high_resolution_clock::now();
     std::cout << "Keypoint detection and descriptor computation took "
@@ -26,7 +26,7 @@ public:
                      .count()
               << " ms.\n";
 
-    cv::BFMatcher matcher(cv::NORM_HAMMING, true);
+    cv::BFMatcher matcher(cv::NORM_L2, true);
     std::vector<cv::DMatch> matches;
     matcher.match(des1, des2, matches);
 
@@ -55,7 +55,8 @@ public:
         image1_kp.push_back(kp1[m.queryIdx].pt);
         image2_kp.push_back(kp2[m.trainIdx].pt);
       }
-      cv::Mat H = cv::findHomography(image2_kp, image1_kp, cv::RANSAC, 5.0);
+      // 使用 RANSAC 计算单应矩阵
+      cv::Mat H = cv::findHomography(image2_kp, image1_kp, cv::RANSAC);
       auto homography_end = std::chrono::high_resolution_clock::now();
       std::cout << "Homography computation took "
                 << std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -173,7 +174,7 @@ private:
   float ratio;
   int min_match;
   int smoothing_window_size;
-  cv::Ptr<cv::ORB> orb;
+  cv::Ptr<cv::SIFT> sift;
 };
 
 void processImages(const std::string &img1_path, const std::string &img2_path,

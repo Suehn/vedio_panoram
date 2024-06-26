@@ -164,7 +164,7 @@ dmypy.json
 *.pdb
 *.pgd
 *.rsp
-
+*.jpg
 # CMake files
 CMakeFiles/
 CMakeCache.txt
