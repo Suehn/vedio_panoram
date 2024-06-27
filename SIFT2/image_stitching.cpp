@@ -1,5 +1,3 @@
-
-
 #include <chrono>
 #include <iostream>
 #include <opencv2/opencv.hpp>
@@ -21,22 +19,22 @@ public:
     orb->detectAndCompute(img2, cv::noArray(), kp2, des2);
 
     auto detect_compute_end = std::chrono::high_resolution_clock::now();
-    // std::cout << "Keypoint detection and descriptor computation took "
-    //           << std::chrono::duration_cast<std::chrono::milliseconds>(
-    //                  detect_compute_end - start)
-    //                  .count()
-    //           << " ms.\n";
+    std::cout << "Keypoint detection and descriptor computation took "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(
+                     detect_compute_end - start)
+                     .count()
+              << " ms.\n";
 
     cv::BFMatcher matcher(cv::NORM_HAMMING, true);
     std::vector<cv::DMatch> matches;
     matcher.match(des1, des2, matches);
 
     auto matching_end = std::chrono::high_resolution_clock::now();
-    // std::cout << "Matching descriptors took "
-    //           << std::chrono::duration_cast<std::chrono::milliseconds>(
-    //                  matching_end - detect_compute_end)
-    //                  .count()
-    //           << " ms.\n";
+    std::cout << "Matching descriptors took "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(
+                     matching_end - detect_compute_end)
+                     .count()
+              << " ms.\n";
 
     std::sort(matches.begin(), matches.end(),
               [](const cv::DMatch &a, const cv::DMatch &b) {
@@ -58,11 +56,12 @@ public:
       }
       cv::Mat H = cv::findHomography(image2_kp, image1_kp, cv::RANSAC, 5.0);
       auto homography_end = std::chrono::high_resolution_clock::now();
-      // std::cout << "Homography computation took "
-      //           << std::chrono::duration_cast<std::chrono::milliseconds>(
-      //                  homography_end - matching_end)
-      //                  .count()
-      //           << " ms.\n";
+      std::cout << "Homography computation took "
+                << std::chrono::duration_cast<std::chrono::milliseconds>(
+                       homography_end - matching_end)
+                       .count()
+                << " ms.\n";
+      std::cout << "Homography Matrix: \n" << H << "\n";
       return H;
     }
     return cv::Mat();
@@ -131,11 +130,11 @@ public:
     panorama1 = panorama1.mul(mask1);
 
     auto panorama1_end = std::chrono::high_resolution_clock::now();
-    // std::cout << "First image blending took "
-    //           << std::chrono::duration_cast<std::chrono::milliseconds>(
-    //                  panorama1_end - start)
-    //                  .count()
-    //           << " ms.\n";
+    std::cout << "First image blending took "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(
+                     panorama1_end - start)
+                     .count()
+              << " ms.\n";
 
     cv::Mat mask2 = createMask(img1, img2, "right_image");
     cv::Mat panorama2;
@@ -145,11 +144,11 @@ public:
     panorama2 = panorama2.mul(mask2);
 
     auto panorama2_end = std::chrono::high_resolution_clock::now();
-    // std::cout << "Second image blending took "
-    //           << std::chrono::duration_cast<std::chrono::milliseconds>(
-    //                  panorama2_end - panorama1_end)
-    //                  .count()
-    //           << " ms.\n";
+    std::cout << "Second image blending took "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(
+                     panorama2_end - panorama1_end)
+                     .count()
+              << " ms.\n";
 
     cv::Mat result = panorama1 + panorama2;
 
@@ -161,11 +160,11 @@ public:
     cv::Rect roi = cv::boundingRect(gray > 0);
 
     auto end = std::chrono::high_resolution_clock::now();
-    // std::cout << "Total blending process took "
-    //           << std::chrono::duration_cast<std::chrono::milliseconds>(end -
-    //                                                                    start)
-    //                  .count()
-    //           << " ms.\n";
+    std::cout << "Total blending process took "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(end -
+                                                                       start)
+                     .count()
+              << " ms.\n";
 
     return result8U(roi);
   }
@@ -209,10 +208,9 @@ int main(int argc, char **argv) {
   cv::Mat result = stitchImages(image_paths);
   if (!result.empty()) {
     cv::imwrite(output_path, result);
-    // std::cout << "Panorama image " << output_path << " has been created.\n";
+    std::cout << "Panorama image " << output_path << " has been created.\n";
   } else {
-    // std::cerr << "Panorama image " << output_path << " could not be
-    // created.\n";
+    std::cerr << "Panorama image " << output_path << " could not be created.\n";
   }
 
   return 0;
