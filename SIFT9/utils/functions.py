@@ -166,11 +166,33 @@ def compute_homography(kp1: List[cv.KeyPoint], kp2: List[cv.KeyPoint], matches: 
     if len(matches) >= min_match_count:
         src_pts = np.float32([kp1[m.queryIdx].pt for m in matches]).reshape(-1, 1, 2)
         dst_pts = np.float32([kp2[m.trainIdx].pt for m in matches]).reshape(-1, 1, 2)
-        M, mask = cv.findHomography(src_pts, dst_pts, cv.RANSAC, 5.0)
-        return M
+        H, mask = cv.findHomography(src_pts, dst_pts, cv.RANSAC, 5.0)
+        return np.linalg.inv(H)
     else:
         print("匹配点不足！")
         return None
+
+import numpy as np
+from numba import jit
+
+@jit(nopython=True)
+def blend_images_with_numba(img1: np.ndarray, warp_img2: np.ndarray, left: int, right: int) -> np.ndarray:
+    rows, cols = img1.shape[:2]
+    res = np.zeros((rows, cols, 3), np.uint8)
+    
+    for row in range(rows):
+        for col in range(cols):
+            if not img1[row, col].any():
+                res[row, col] = warp_img2[row, col]
+            elif not warp_img2[row, col].any():
+                res[row, col] = img1[row, col]
+            else:
+                srcimg_len = float(abs(col - left))
+                warpimg_len = float(abs(col - right))
+                alpha = srcimg_len / (srcimg_len + warpimg_len)
+                res[row, col] = np.clip(img1[row, col] * (1 - alpha) + warp_img2[row, col] * alpha, 0, 255)
+    
+    return res
 
 def stitch_images_with_blending(img1: np.ndarray, img2: np.ndarray, H: np.ndarray) -> np.ndarray:
     """
@@ -189,7 +211,7 @@ def stitch_images_with_blending(img1: np.ndarray, img2: np.ndarray, H: np.ndarra
     height2, width2 = img2.shape[:2]
 
     # 使用单应性矩阵将 img2 变换到 img1 的平面
-    warp_img2 = cv.warpPerspective(img2, np.linalg.inv(H), (width1 + width2, height1))
+    warp_img2 = cv.warpPerspective(img2, H, (width1 + width2, height1))
 
     # 在变换后的图像上复制 img1
     result = warp_img2.copy()
@@ -209,18 +231,77 @@ def stitch_images_with_blending(img1: np.ndarray, img2: np.ndarray, H: np.ndarra
             right = col
             break
     
-    res = np.zeros([rows, cols, 3], np.uint8)
-    for row in range(0, rows):
-        for col in range(0, cols):
-            if not img1[row, col].any():
-                res[row, col] = warp_img2[row, col]
-            elif not warp_img2[row, col].any():
-                res[row, col] = img1[row, col]
-            else:
-                srcimg_len = float(abs(col - left))
-                warpimg_len = float(abs(col - right))
-                alpha = srcimg_len / (srcimg_len + warpimg_len)
-                res[row, col] = np.clip(img1[row, col] * (1 - alpha) + warp_img2[row, col] * alpha, 0, 255)
-    
+    # 使用 Numba 加速重叠区域的加权平均处理
+    res = blend_images_with_numba(img1, warp_img2, left, right)
     warp_img2[0:img1.shape[0], 0:img1.shape[1]] = res
+    
     return warp_img2
+
+# def stitch_images_with_blending(img1: np.ndarray, img2: np.ndarray, H: np.ndarray) -> np.ndarray:
+#     """
+#     使用单应性矩阵拼接两张图像，并在重叠区域使用加权平均方法进行混合。
+
+#     参数:
+#     img1 (np.ndarray): 第一张图像。
+#     img2 (np.ndarray): 第二张图像。
+#     H (np.ndarray): 单应性矩阵。
+
+#     返回:
+#     np.ndarray: 拼接后的图像。
+#     """
+#     # 获取图像尺寸
+#     # from time import time
+#     # st = time()
+#     height1, width1 = img1.shape[:2]
+#     height2, width2 = img2.shape[:2]
+
+#     # 使用单应性矩阵将 img2 变换到 img1 的平面
+#     warp_img2 = cv.warpPerspective(img2, np.linalg.inv(H), (width1 + width2, height1))
+
+#     # 在变换后的图像上复制 img1
+#     result = warp_img2.copy()
+#     result[0:height1, 0:width1] = img1
+
+#     # 找到重叠区域
+#     rows, cols = img1.shape[:2]
+#     left, right = 0, cols
+    
+#     for col in range(0, cols):
+#         if img1[:, col].any() and warp_img2[:, col].any():
+#             left = col
+#             break
+    
+#     for col in range(cols - 1, 0, -1):
+#         if img1[:, col].any() and warp_img2[:, col].any():
+#             right = col
+#             break
+    
+#     res = np.zeros([rows, cols, 3], np.uint8)
+#     for row in range(0, rows):
+#         for col in range(0, cols):
+#             if not img1[row, col].any():
+#                 res[row, col] = warp_img2[row, col]
+#             elif not warp_img2[row, col].any():
+#                 res[row, col] = img1[row, col]
+#             else:
+#                 srcimg_len = float(abs(col - left))
+#                 warpimg_len = float(abs(col - right))
+#                 alpha = srcimg_len / (srcimg_len + warpimg_len)
+#                 res[row, col] = np.clip(img1[row, col] * (1 - alpha) + warp_img2[row, col] * alpha, 0, 255)
+    
+#     warp_img2[0:img1.shape[0], 0:img1.shape[1]] = res
+#     # print(f"耗时{time()-st:.2f}s")
+#     return warp_img2
+def crop_black_right(image_array):
+    # 将图像转换为灰度图以查找黑色像素
+    grayscale_image = cv.cvtColor(image_array, cv.COLOR_BGR2GRAY)
+
+    # 查找非黑色区域的边界框
+    non_black_pixels = np.where(grayscale_image != 0)
+    left, upper = np.min(non_black_pixels, axis=1)
+    right, lower = np.max(non_black_pixels, axis=1)
+
+    # 裁剪图像以去除右侧的黑色区域
+    cropped_image_array = image_array[10:-10,0:2200]
+
+    return cropped_image_array
