@@ -298,10 +298,8 @@ def crop_black_right(image_array):
 
     # 查找非黑色区域的边界框
     non_black_pixels = np.where(grayscale_image != 0)
-    left, upper = np.min(non_black_pixels, axis=1)
-    right, lower = np.max(non_black_pixels, axis=1)
 
     # 裁剪图像以去除右侧的黑色区域
-    cropped_image_array = image_array[10:-10,0:2200]
+    cropped_image_array = image_array[10:-10,0:2400]
 
     return cropped_image_array
