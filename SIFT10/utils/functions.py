@@ -1,4 +1,6 @@
-import cv2 as cv
+import os
+import re
+import cv2 as cv # type: ignore
 import numpy as np
 from typing import Tuple, List, Optional, Dict
 import numpy as np
@@ -173,7 +175,7 @@ def compute_homography(kp1: List[cv.KeyPoint], kp2: List[cv.KeyPoint], matches: 
         return None
 
 import numpy as np
-from numba import jit
+from numba import jit # type: ignore
 
 @jit(nopython=True)
 def blend_images_with_numba(img1: np.ndarray, warp_img2: np.ndarray, left: int, right: int) -> np.ndarray:
@@ -237,6 +239,37 @@ def stitch_images_with_blending(img1: np.ndarray, img2: np.ndarray, H: np.ndarra
     
     return warp_img2
 
+
+def compute_homographies(video1_path, video2_path, video3_path, video4_path, frame_number1=0, frame_number2=890):
+    def compute_H(frame1, frame2, x1_range=[0.4, 1.0], x2_range=[0.0, 0.7]):
+        frame1, frame2 = undistort_and_rotate(frame1, dist_coeffs=np.array([-0.0733, 0.0833, 0, 0], dtype=np.float32), angle=-2.125), undistort_and_rotate(frame2, dist_coeffs=np.array([-0.0733, 0.0833, 0, 0], dtype=np.float32))
+        frame1, frame2 = resize_to_equal_width(frame1, frame2)
+        kp1, des1 = detect_and_compute_features(frame1, x_range=x1_range)
+        kp2, des2 = detect_and_compute_features(frame2, x_range=x2_range)
+
+        good_matches = match_features(des1, des2)
+        H = compute_homography(kp1, kp2, good_matches)
+        return H
+
+    # 读取帧
+    frame1, frame2 = read_frames_from_videos(video1_path, video2_path, frame_number1)
+    # frame1 = resize_frame(frame1 , scale=0.98)
+    frame3, frame4 = read_frames_from_videos(video3_path, video4_path, frame_number2)
+
+    # 计算单应性矩阵
+    H1 = compute_H(frame1, frame2)
+    H2 = compute_H(frame3, frame4)
+
+    sti1 = stitch_images_with_blending(frame1, frame2, H1)
+    sti2 = stitch_images_with_blending(frame3, frame4, H2)
+
+    H3 = compute_H(sti1, sti2, x1_range=[0.3, 1.0], x2_range=[0.0, 0.4])
+    result = stitch_images_with_blending(sti1, sti2, H3)
+    cv.imwrite("result.jpg", result)
+
+    return H1, H2, H3
+
+
 # def stitch_images_with_blending(img1: np.ndarray, img2: np.ndarray, H: np.ndarray) -> np.ndarray:
 #     """
 #     使用单应性矩阵拼接两张图像，并在重叠区域使用加权平均方法进行混合。
@@ -292,36 +325,6 @@ def stitch_images_with_blending(img1: np.ndarray, img2: np.ndarray, H: np.ndarra
 #     warp_img2[0:img1.shape[0], 0:img1.shape[1]] = res
 #     # print(f"耗时{time()-st:.2f}s")
 #     return warp_img2
-
-def compute_homographies(video1_path, video2_path, video3_path, video4_path, frame_number1=0, frame_number2=890):
-    def compute_H(frame1, frame2, x1_range=[0.4, 1.0], x2_range=[0.0, 0.7]):
-        frame1, frame2 = undistort_and_rotate(frame1, dist_coeffs=np.array([-0.0733, 0.0833, 0, 0], dtype=np.float32), angle=-2.125), undistort_and_rotate(frame2, dist_coeffs=np.array([-0.0733, 0.0833, 0, 0], dtype=np.float32))
-        frame1, frame2 = resize_to_equal_width(frame1, frame2)
-        kp1, des1 = detect_and_compute_features(frame1, x_range=x1_range)
-        kp2, des2 = detect_and_compute_features(frame2, x_range=x2_range)
-
-        good_matches = match_features(des1, des2)
-        H = compute_homography(kp1, kp2, good_matches)
-        return H
-
-    # 读取帧
-    frame1, frame2 = read_frames_from_videos(video1_path, video2_path, frame_number1)
-    # frame1 = resize_frame(frame1 , scale=0.98)
-    frame3, frame4 = read_frames_from_videos(video3_path, video4_path, frame_number2)
-
-    # 计算单应性矩阵
-    H1 = compute_H(frame1, frame2)
-    H2 = compute_H(frame3, frame4)
-
-    sti1 = stitch_images_with_blending(frame1, frame2, H1)
-    sti2 = stitch_images_with_blending(frame3, frame4, H2)
-
-    H3 = compute_H(sti1, sti2, x1_range=[0.3, 1.0], x2_range=[0.0, 0.4])
-    result = stitch_images_with_blending(sti1, sti2, H3)
-    cv.imwrite("result.jpg", result)
-
-    return H1, H2, H3
-
 def crop_black_right(image_array):
     # 将图像转换为灰度图以查找黑色像素
     grayscale_image = cv.cvtColor(image_array, cv.COLOR_BGR2GRAY)
@@ -333,3 +336,31 @@ def crop_black_right(image_array):
     cropped_image_array = image_array[10:-10,0:2400]
 
     return cropped_image_array
+
+
+def natural_sort_key(s):
+    return [int(text) if text.isdigit() else text.lower() for text in re.split('([0-9]+)', s)]
+
+def images_to_video(image_folder="output", output_video_path="result.mp4", fps=30):
+    # 获取所有图片文件名并排序
+    images = [img for img in os.listdir(image_folder) if img.endswith((".png", ".jpg", ".jpeg"))]
+    images.sort(key=natural_sort_key)
+    
+
+    # 读取第一张图片以获取帧的宽度和高度
+    frame = cv.imread(os.path.join(image_folder, images[0]))
+    height, width, layers = frame.shape
+
+    # 定义视频编写器
+    fourcc = cv.VideoWriter_fourcc(*'mp4v')  # 使用mp4v编码
+    video = cv.VideoWriter(output_video_path, fourcc, fps, (width, height))
+
+    # 将每张图片写入视频
+    for image in images:
+        img_path = os.path.join(image_folder, image)
+        frame = cv.imread(img_path)
+        video.write(frame)
+
+    # 释放视频编写器
+    video.release()
+    print(f"视频保存到 {output_video_path}")
